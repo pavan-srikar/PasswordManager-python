@@ -1,5 +1,5 @@
 import tkinter as tk
-from tkinter import messagebox
+from tkinter import messagebox, simpledialog
 from encryption_util import EncryptionUtil
 from password_storage import PasswordStorage
 
@@ -10,55 +10,106 @@ class PasswordManagerApp:
 
         self.encryption_util = None
         self.password_storage = PasswordStorage()
+        self.current_page = 0
+        self.items_per_page = 10
 
-        self.password_label = tk.Label(root, text="Master Password:")
-        self.password_label.pack()
-        self.password_entry = tk.Entry(root, show="*")
-        self.password_entry.pack()
+        self.master_password_frame = tk.Frame(root)
+        self.master_password_frame.pack(pady=10)
 
-        self.login_button = tk.Button(root, text="Login", command=self.set_master_password)
-        self.login_button.pack()
+        self.password_label = tk.Label(self.master_password_frame, text="Master Password:")
+        self.password_label.pack(side=tk.LEFT)
+        self.password_entry = tk.Entry(self.master_password_frame, show="*")
+        self.password_entry.pack(side=tk.LEFT)
 
-        self.key_label = tk.Label(root, text="Key:")
-        self.key_label.pack()
-        self.key_entry = tk.Entry(root)
-        self.key_entry.pack()
+        self.login_button = tk.Button(self.master_password_frame, text="Login", command=self.set_master_password)
+        self.login_button.pack(side=tk.LEFT)
 
-        self.password_label = tk.Label(root, text="Password:")
-        self.password_label.pack()
-        self.password_entry = tk.Entry(root, show="*")
-        self.password_entry.pack()
+        self.content_frame = tk.Frame(root)
+        self.content_frame.pack(pady=10)
 
-        self.save_button = tk.Button(root, text="Save", command=self.save_password)
-        self.save_button.pack()
-
-        self.retrieve_button = tk.Button(root, text="Retrieve", command=self.retrieve_password)
-        self.retrieve_button.pack()
+        self.navigation_frame = tk.Frame(root)
+        self.navigation_frame.pack(pady=10)
 
     def set_master_password(self):
         master_password = self.password_entry.get().encode()
         self.encryption_util = EncryptionUtil(master_password)
-        messagebox.showinfo("Info", "Master password set successfully")
+        self.password_label.pack_forget()
+        self.password_entry.pack_forget()
+        self.login_button.config(text="Logout", command=self.logout)
+        self.display_passwords()
 
-    def save_password(self):
-        key = self.key_entry.get()
-        password = self.password_entry.get()
-        if self.encryption_util and key and password:
+    def logout(self):
+        self.encryption_util = None
+        self.current_page = 0
+        self.clear_content()
+        self.master_password_frame.pack(pady=10)
+        self.password_label.pack(side=tk.LEFT)
+        self.password_entry.pack(side=tk.LEFT)
+        self.password_entry.delete(0, tk.END)
+        self.login_button.config(text="Login", command=self.set_master_password)
+
+    def clear_content(self):
+        for widget in self.content_frame.winfo_children():
+            widget.destroy()
+        for widget in self.navigation_frame.winfo_children():
+            widget.destroy()
+
+    def display_passwords(self):
+        self.clear_content()
+        passwords = self.password_storage.load_passwords()
+        keys = list(passwords.keys())
+        start = self.current_page * self.items_per_page
+        end = start + self.items_per_page
+        for i in range(start, min(end, len(keys))):
+            key = keys[i]
+            self.create_password_entry(key, passwords[key])
+
+        if len(keys) > self.items_per_page:
+            self.create_navigation_buttons()
+
+    def create_password_entry(self, key, encrypted_password):
+        frame = tk.Frame(self.content_frame)
+        frame.pack(fill=tk.X, pady=2)
+
+        key_label = tk.Label(frame, text=key, width=20, anchor='w')
+        key_label.pack(side=tk.LEFT)
+
+        password_entry = tk.Entry(frame, show="*", width=20)
+        password_entry.insert(0, "*****")
+        password_entry.pack(side=tk.LEFT, padx=5)
+
+        view_button = tk.Button(frame, text="View", command=lambda: self.view_password(password_entry, encrypted_password))
+        view_button.pack(side=tk.LEFT, padx=5)
+
+    def create_navigation_buttons(self):
+        prev_button = tk.Button(self.navigation_frame, text="Previous", command=self.previous_page)
+        prev_button.pack(side=tk.LEFT, padx=5)
+
+        next_button = tk.Button(self.navigation_frame, text="Next", command=self.next_page)
+        next_button.pack(side=tk.LEFT, padx=5)
+
+    def previous_page(self):
+        if self.current_page > 0:
+            self.current_page -= 1
+            self.display_passwords()
+
+    def next_page(self):
+        self.current_page += 1
+        self.display_passwords()
+
+    def save_password(self, key, password):
+        if self.encryption_util:
             encrypted_password = self.encryption_util.encrypt(password)
             self.password_storage.save_password(key, encrypted_password)
-            self.key_entry.delete(0, tk.END)
-            self.password_entry.delete(0, tk.END)
-            messagebox.showinfo("Info", "Password saved successfully")
+            self.display_passwords()
 
-    def retrieve_password(self):
-        key = self.key_entry.get()
-        if self.encryption_util and key:
-            encrypted_password = self.password_storage.get_password(key)
-            if encrypted_password:
-                decrypted_password = self.encryption_util.decrypt(encrypted_password)
-                messagebox.showinfo("Info", f"Password: {decrypted_password}")
-            else:
-                messagebox.showerror("Error", "No password found for the given key")
+    def view_password(self, password_entry, encrypted_password):
+        if self.encryption_util:
+            decrypted_password = self.encryption_util.decrypt(encrypted_password)
+            password_entry.config(show="")
+            password_entry.delete(0, tk.END)
+            password_entry.insert(0, decrypted_password)
+            self.root.after(5000, lambda: password_entry.config(show="*"))
 
 if __name__ == "__main__":
     root = tk.Tk()
